@@ -14,6 +14,8 @@
     "ethers": "^5.7.1"
   },
   "scripts": {
-    "start": "npx ts-node src/index.ts"
+    "start": "npx ts-node src/index.ts",
+    "build": "npx tsc",
+    "test": "npx ts-node src/test.ts"
   }
 }
