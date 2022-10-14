@@ -39,10 +39,7 @@ contract Backrun {
     function execute(
         address _uniPool,
         address _sushiPool,
-        address _token,
         bool uniZeroForOne,
-        uint256 sushiAmount0Out,
-        uint256 sushiAmount1Out,
         int256 buyAmount,
         uint160 sqrtPriceLimitX96
     ) public returns (uint256) {
@@ -51,7 +48,7 @@ contract Backrun {
         ISushiPair sushiPool = ISushiPair(_sushiPool);
 
         // buy the tokens on uniswap
-        (int256 amount0, int256 amount1) = uniPool.swap(
+        (int256 _amount0, int256 amount1) = uniPool.swap(
             address(this),
             uniZeroForOne,
             buyAmount,
@@ -60,10 +57,13 @@ contract Backrun {
         );
 
         // sell tokens on sushiswap
-        sushiPool.swap(sushiAmount0Out, sushiAmount1Out, address(this), "");
+        sushiPool.swap(0, uint256(amount1), address(this), "");
+
+        return WETH.balanceOf(address(this));
     }
 
     function liquidate() public {
         // transfer funds to owner
+        WETH.transfer(owner, WETH.balanceOf(address(this)));
     }
 }
