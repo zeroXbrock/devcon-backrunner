@@ -1,12 +1,25 @@
 import dotenv from "dotenv"
-import { Wallet, providers, Contract } from "ethers"
+import { Wallet, providers, Contract, UnsignedTransaction, BigNumber, utils } from "ethers"
 import { FlashbotsBundleProvider } from "@flashbots/ethers-provider-bundle"
 import contracts from "./lib/contracts"
 import { ExactInputSingle, ExactOutputSingle, UniswapTrade, decodeTx as decodeUniswapTx } from './lib/uniswap'
 import tokens from "./lib/tokens"
-import { now } from './lib/helpers'
+import { getPoolAddresses, now } from './lib/helpers'
 
 export const DEBUG = false
+type Backrun = {
+    sushiPoolAddress: string,
+    uniPoolAddress: string,
+    mempoolTx: providers.TransactionResponse,
+    buyAmount: BigNumber,
+    decodedTx: UniswapTrade,
+}
+
+type ContractInstances = {
+    backrunExecutor: Contract,
+    uniswapFactory: Contract,
+    sushiswapFactory: Contract,
+}
 
 // init .env
 dotenv.config()
@@ -15,14 +28,19 @@ async function main() {
     const provider = new providers.WebSocketProvider(process.env.RPC_URL_WS || "", {chainId: parseInt(process.env.CHAIN_ID || "5"), name: process.env.CHAIN_NAME || "goerli"})
     const authSigner = new Wallet(process.env.AUTH_PRV_KEY || "")
     const flashbots = await FlashbotsBundleProvider.create(provider, authSigner, process.env.CHAIN_NAME)
-
-    monitorMempool(provider, flashbots)
-}
-
-const monitorMempool = async (provider: providers.WebSocketProvider, flashbotsProvider: FlashbotsBundleProvider) => {
     const uniswapFactory = new Contract(contracts.UniswapV3Factory.address, contracts.UniswapV3Factory.abi, provider)
     const sushiswapFactory = new Contract(contracts.SushiswapFactory.address, contracts.SushiswapFactory.abi, provider)
+    const backrunExecutor = new Contract(contracts.BackrunExecutor.address, contracts.BackrunExecutor.abi)
 
+    monitorMempool(provider, flashbots, {sushiswapFactory, uniswapFactory, backrunExecutor})
+}
+
+const monitorMempool = async (provider: providers.WebSocketProvider, flashbotsProvider: FlashbotsBundleProvider, contractInstances: ContractInstances) => {
+    if (!process.env.SENDER_PRV_KEY) {
+        console.error("missing SENDER_PRV_KEY in .env")
+        return
+    }
+    const sender = new Wallet(process.env.SENDER_PRV_KEY)
     const isJuicy = (tx: providers.TransactionResponse, decodedTx: UniswapTrade) => {
         // looking for transactions that trade TOKEN_X for WETH
         // we have weth
@@ -54,25 +72,21 @@ const monitorMempool = async (provider: providers.WebSocketProvider, flashbotsPr
                 decodedTx.amountInMaximum
 
                 // get pool addresses for each exchange
-                const sushiPoolPromise = sushiswapFactory.getPair(decodedTx.tokenIn, decodedTx.tokenOut)
-                const uniPoolPromise = uniswapFactory.getPool(decodedTx.tokenIn, decodedTx.tokenOut, decodedTx.fee)
-
-                const sushiPoolAddress = await sushiPoolPromise
+                const {uniPoolAddress, sushiPoolAddress} = await getPoolAddresses(decodedTx, contractInstances.sushiswapFactory, contractInstances.uniswapFactory)
                 if (sushiPoolAddress === "0x0000000000000000000000000000000000000000") {
                     console.error("SUSHI pool does not exist for this token pair")
                     return
                 }
-                const uniPoolAddress = await uniPoolPromise
 
                 const backrun = {
                     sushiPoolAddress,
                     uniPoolAddress,
-                    backrunTx: tx,
+                    mempoolTx: tx,
                     buyAmount,
                     decodedTx,
                 }
                 foundBackrunCount += 1
-                processBackrun(flashbotsProvider, backrun)
+                processBackrun(provider, flashbotsProvider, sender, backrun, contractInstances)
             } else {
                 DEBUG && console.warn("not juicy")
             }
@@ -81,7 +95,49 @@ const monitorMempool = async (provider: providers.WebSocketProvider, flashbotsPr
     })
 }
 
-const processBackrun = async (flashbotsProvider: FlashbotsBundleProvider, backrun: any) => {
+const processBackrun = async (provider: providers.WebSocketProvider, flashbotsProvider: FlashbotsBundleProvider, sender: Wallet, backrun: Backrun, contractInstances: ContractInstances) => {
+    const blockNum = provider.getBlockNumber()
+
+    const mempoolTx: UnsignedTransaction = backrun.mempoolTx
+    delete mempoolTx.gasPrice
+    const {r, s, v} = backrun.mempoolTx
+    const signedMempoolTx = utils.serializeTransaction(mempoolTx, {r: r || "", s, v})
+
+    const { uniPoolAddress, sushiPoolAddress } = await getPoolAddresses(backrun.decodedTx, contractInstances.sushiswapFactory, contractInstances.uniswapFactory)
+    const uniPool = new Contract(uniPoolAddress, contracts.IUniswapV3Pool.abi, provider)
+    const sushiPool = new Contract(sushiPoolAddress, contracts.ISushiswapV3Pair.abi, provider)
+    const tokenAddress = backrun.decodedTx.tokenIn // will always be tokenIn bc we filter by (tokenOut == WETH)
+    const sushiPoolToken0 = sushiPool.token0
+    const uniPoolToken0 = uniPool.token0
+    const buyAmount = backrun.decodedTx instanceof ExactOutputSingle ? backrun.decodedTx.amountInMaximum : backrun.decodedTx.amountIn
+    const backrunTx = {
+        ...await contractInstances.backrunExecutor.populateTransaction.execute(
+            sushiPoolAddress,
+            uniPoolAddress,
+            tokenAddress,
+            (await sushiPoolToken0) === tokenAddress,
+            (await uniPoolToken0) === tokens.WETH.address,
+            buyAmount,
+            backrun.decodedTx.sqrtPriceLimitX96
+        ),
+        type: 2,
+        maxFeePerGas: BigNumber.from(1e9).mul(42),
+        maxPriorityFeePerGas: BigNumber.from(1e9).mul(3),
+        gasLimit: BigNumber.from(800000),
+        chainId: 1,
+        nonce: (await sender.getTransactionCount()),
+        value: BigNumber.from(0),
+    }
+
+    const signedBackrunTx = await sender.signTransaction(backrunTx)
+
+    const bundleTxs = [
+        signedMempoolTx,
+        signedBackrunTx
+    ]
+    
+    flashbotsProvider.simulate(bundleTxs, (await blockNum) + 1)
+
     console.log("SENDING BACKRUN TO FLASHBOTS", backrun)
     console.log("TODO")
 }

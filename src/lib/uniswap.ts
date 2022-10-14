@@ -1,7 +1,7 @@
 import { BigNumber, utils } from "ethers"
 import { padRightWithZeros } from './helpers'
-import { DEBUG } from "../index"
 
+const DEBUG = false
 export type UniswapTrade = ExactInputSingle | ExactOutputSingle
 
 export const decodeTx = (data: string): UniswapTrade | undefined => {
