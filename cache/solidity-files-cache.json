@@ -1,0 +1,59 @@
+{
+  "_format": "ethers-rs-sol-cache-3",
+  "paths": {
+    "artifacts": "out",
+    "sources": "src",
+    "tests": "test",
+    "libraries": [
+      "node_modules"
+    ]
+  },
+  "files": {
+    "/Users/brock/Documents/GitHub/backrunner/src/contracts/BackrunExecutor.sol": {
+      "lastModificationDate": 1665719364215,
+      "contentHash": "cb5a755969308dcce6cf8764fbe8a631",
+      "sourceName": "src/contracts/BackrunExecutor.sol",
+      "solcConfig": {
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "metadata": {
+            "bytecodeHash": "ipfs"
+          },
+          "outputSelection": {
+            "*": {
+              "": [
+                "ast"
+              ],
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers"
+              ]
+            }
+          },
+          "evmVersion": "london"
+        }
+      },
+      "imports": [],
+      "versionRequirement": "^0.8.14",
+      "artifacts": {
+        "BackrunExecutor": {
+          "0.8.14+commit.80d49f37.Darwin.appleclang": "BackrunExecutor.sol/BackrunExecutor.json"
+        },
+        "IERC20": {
+          "0.8.14+commit.80d49f37.Darwin.appleclang": "BackrunExecutor.sol/IERC20.json"
+        },
+        "ISushiPair": {
+          "0.8.14+commit.80d49f37.Darwin.appleclang": "BackrunExecutor.sol/ISushiPair.json"
+        },
+        "IUniPool": {
+          "0.8.14+commit.80d49f37.Darwin.appleclang": "BackrunExecutor.sol/IUniPool.json"
+        }
+      }
+    }
+  }
+}
