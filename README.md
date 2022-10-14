@@ -8,6 +8,8 @@
 
 ## iterations
 
+The base repo is empty. Check out one of the following branches:
+
 None of these are quite done or functional, but they provide a general structure and approach for backrunning, and may be useful for learning.
 
 * [empty project](https://github.com/zeroXbrock/backrunner/tree/skeleton)
