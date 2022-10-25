@@ -7,4 +7,4 @@
 - [x] write arb executor contract
 - [x] send backrun bundle to Flashbots (sim only)
 
-Running a mempool backrunner can be risky. There are poison tokens that drain your liquidity when you trade them. See [salmonella](https://github.com/Defi-Cartel/salmonella) for an example.
+> :warning: Running a mempool backrunner can be risky. There are poison tokens that drain your liquidity when you trade them. See [salmonella](https://github.com/Defi-Cartel/salmonella) for an example.
