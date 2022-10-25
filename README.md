@@ -7,3 +7,5 @@
 - [x] craft a backrun arb
 - [x] write arb executor contract
 - [~] execute arb using Flashbots
+
+Running a mempool backrunner can be risky. There are poison tokens that drain your liquidity when you trade them. See [salmonella](https://github.com/Defi-Cartel/salmonella) for an example.
